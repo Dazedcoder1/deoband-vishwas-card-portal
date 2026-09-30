@@ -54,23 +54,35 @@ export function captchaPending() {
   return Boolean(rendered && typeof window.isCaptchaVerified === 'function' && !window.isCaptchaVerified());
 }
 
+/** Rejects if MSG91 never calls back (e.g. wrong widget ID / token), so the button can't spin forever. */
+function withTimeout(promise, ms, what) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      console.error(`[MSG91] No reply to ${what} after ${ms / 1000}s — check MSG91_WIDGET_ID and MSG91_WIDGET_TOKEN_AUTH in .env, and that the widget is active.`);
+      reject(new Error('The OTP service did not respond. Please try again in a moment or call the helpline.'));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 const reqIdOf = (data) => (typeof data === 'string' ? data : data?.message || data?.reqId || undefined);
 
 /** Wraps the widget's callback API in promises (see MSG91 docs: sendOtp / retryOtp / verifyOtp). */
 export const widget = {
   /** Resolves with the request ID MSG91 returns, used by retry() and verify(). */
-  send: (identifier) => new Promise((resolve, reject) =>
+  send: (identifier) => withTimeout(new Promise((resolve, reject) =>
     window.sendOtp(identifier, (data) => resolve(reqIdOf(data)), (e) => reject(new Error(errorText(e, 'Could not send the OTP.')))),
-  ),
+  ), 20_000, 'sendOtp'),
   // channel null = the widget's default configuration
-  retry: (reqId) => new Promise((resolve, reject) =>
+  retry: (reqId) => withTimeout(new Promise((resolve, reject) =>
     window.retryOtp(null, (data) => resolve(data), (e) => reject(new Error(errorText(e, 'Could not resend the OTP.'))), reqId),
-  ),
+  ), 20_000, 'retryOtp'),
   /** Resolves with the MSG91 access token that our backend then confirms. */
-  verify: (otp, reqId) => new Promise((resolve, reject) =>
+  verify: (otp, reqId) => withTimeout(new Promise((resolve, reject) =>
     window.verifyOtp(otp, (data) => {
       const token = typeof data === 'string' ? data : data?.message || data?.token || data?.['access-token'];
       token ? resolve(token) : reject(new Error('OTP verified, but no confirmation token was returned. Please try again.'));
     }, (e) => reject(new Error(errorText(e, 'Incorrect OTP. Please check and try again.'))), reqId),
-  ),
+  ), 20_000, 'verifyOtp'),
 };
