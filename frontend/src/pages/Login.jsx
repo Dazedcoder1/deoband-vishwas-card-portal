@@ -161,8 +161,13 @@ function UserLogin() {
         const { identifier } = await api.post('/auth/otp/precheck', { mobile, cardId });
         await loadMsg91Widget(otpConfig);
         if (captchaPending()) throw new Error('Please complete the captcha below, then click Send OTP.');
-        if (sent) await widget.retry(reqId);
-        else setReqId(await widget.send(identifier));
+        if (sent && reqId) {
+          // Resend on the same request; if MSG91 has closed that request (expired / retry limit), start a fresh one.
+          try { await widget.retry(reqId); }
+          catch (retryErr) { console.warn('[MSG91] retry failed, sending a new OTP instead:', retryErr.message); setReqId(await widget.send(identifier)); }
+        } else {
+          setReqId(await widget.send(identifier));
+        }
         setCountdown(30);
         setInfo('OTP sent to your registered mobile number.');
       } else {
