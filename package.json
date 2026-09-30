@@ -1,0 +1,26 @@
+{
+  "name": "deoband-vishwas-card",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deoband Vishwas Card — citizen healthcare & welfare card portal (React frontend + Express backend, Neon PostgreSQL, Cloudflare R2 storage)",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,yellow \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "build": "npm run build -w frontend",
+    "start": "npm run start -w backend",
+    "check:r2": "npm run check:r2 -w backend",
+    "seed": "npm run seed -w backend",
+    "db:migrate": "npm run db:migrate -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

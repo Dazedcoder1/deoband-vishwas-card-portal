@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body { @apply bg-canvas text-ink antialiased font-sans; }
+  :focus-visible { outline: 2px solid #C9982E; outline-offset: 2px; }
+}
+
+@layer components {
+  .icon {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    user-select: none;
+  }
+  .icon-outline { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+
+  .container-x { @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8; }
+
+  .btn { @apply inline-flex items-center justify-center gap-2 font-bold rounded-full transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[.98]; }
+  .btn-primary { @apply btn bg-primary hover:bg-primary-dark text-white px-6 py-3 shadow-lg shadow-primary/25; }
+  .btn-outline { @apply btn border-2 border-primary/40 hover:border-primary text-primary hover:bg-primary/5 px-6 py-3; }
+  .btn-gold { @apply btn bg-gold hover:bg-gold-light text-[#2A1254] px-6 py-3; }
+  .btn-ghost { @apply btn text-primary hover:bg-primary/5 px-4 py-2; }
+
+  .label { @apply block text-xs font-bold uppercase tracking-wider text-ink-body mb-1.5; }
+  .label .hi { @apply normal-case tracking-normal font-deva font-medium text-ink-muted; }
+  .input { @apply w-full rounded-lg border border-lavender-line bg-white px-3.5 py-3 text-[15px] text-ink placeholder:text-ink-muted/70 focus:border-primary-deep focus:ring-[3px] focus:ring-primary/15 transition; }
+  .hint { @apply text-xs text-ink-muted mt-1.5; }
+
+  .panel { @apply bg-white rounded-2xl border border-lavender shadow-lift; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold; }
+  .chip-verified { @apply chip bg-gold/10 text-gold-ink border border-gold-bright; }
+  .chip-pending { @apply chip bg-amber-50 text-amber-700 border border-amber-200; }
+  .chip-suspended { @apply chip bg-red-50 text-red-700 border border-red-200; }
+  .chip-lav { @apply chip bg-lavender text-primary-deep; }
+
+  .shimmer::after {
+    content: '';
+    @apply absolute inset-y-0 left-0 w-3/5 pointer-events-none animate-shimmer;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
