@@ -45,7 +45,15 @@ export function loadMsg91Widget({ widgetId, tokenAuth }) {
   return loading;
 }
 
-const errorText = (e, fallback) => (typeof e === 'string' ? e : e?.message || fallback);
+/** Pull MSG91's own reason out of whatever shape the widget's failure callback passes. */
+const errorText = (e, fallback) => {
+  console.error('[MSG91] widget error:', e);
+  if (typeof e === 'string') return e;
+  const msg = e?.message || e?.msg || e?.error?.message || e?.error || e?.data?.message || e?.errors?.[0]?.message;
+  if (typeof msg === 'string' && msg) return e?.code ? `${msg} (MSG91 code ${e.code})` : msg;
+  try { const raw = JSON.stringify(e); if (raw && raw !== '{}') return `${fallback} MSG91 said: ${raw.slice(0, 200)}`; } catch { /* ignore */ }
+  return fallback;
+};
 
 /** True when captcha is switched on in the widget settings but not solved yet. */
 export function captchaPending() {
