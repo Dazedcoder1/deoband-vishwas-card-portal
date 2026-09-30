@@ -47,19 +47,30 @@ export function loadMsg91Widget({ widgetId, tokenAuth }) {
 
 const errorText = (e, fallback) => (typeof e === 'string' ? e : e?.message || fallback);
 
-/** Wraps the widget's callback API in promises. */
+/** True when captcha is switched on in the widget settings but not solved yet. */
+export function captchaPending() {
+  const el = document.getElementById(CAPTCHA_ELEMENT_ID);
+  const rendered = el && el.childElementCount > 0;
+  return Boolean(rendered && typeof window.isCaptchaVerified === 'function' && !window.isCaptchaVerified());
+}
+
+const reqIdOf = (data) => (typeof data === 'string' ? data : data?.message || data?.reqId || undefined);
+
+/** Wraps the widget's callback API in promises (see MSG91 docs: sendOtp / retryOtp / verifyOtp). */
 export const widget = {
+  /** Resolves with the request ID MSG91 returns, used by retry() and verify(). */
   send: (identifier) => new Promise((resolve, reject) =>
-    window.sendOtp(identifier, (data) => resolve(data), (e) => reject(new Error(errorText(e, 'Could not send the OTP.')))),
+    window.sendOtp(identifier, (data) => resolve(reqIdOf(data)), (e) => reject(new Error(errorText(e, 'Could not send the OTP.')))),
   ),
-  retry: () => new Promise((resolve, reject) =>
-    window.retryOtp(null, (data) => resolve(data), (e) => reject(new Error(errorText(e, 'Could not resend the OTP.')))),
+  // channel null = the widget's default configuration
+  retry: (reqId) => new Promise((resolve, reject) =>
+    window.retryOtp(null, (data) => resolve(data), (e) => reject(new Error(errorText(e, 'Could not resend the OTP.'))), reqId),
   ),
   /** Resolves with the MSG91 access token that our backend then confirms. */
-  verify: (otp) => new Promise((resolve, reject) =>
+  verify: (otp, reqId) => new Promise((resolve, reject) =>
     window.verifyOtp(otp, (data) => {
       const token = typeof data === 'string' ? data : data?.message || data?.token || data?.['access-token'];
       token ? resolve(token) : reject(new Error('OTP verified, but no confirmation token was returned. Please try again.'));
-    }, (e) => reject(new Error(errorText(e, 'Incorrect OTP. Please check and try again.')))),
+    }, (e) => reject(new Error(errorText(e, 'Incorrect OTP. Please check and try again.'))), reqId),
   ),
 };

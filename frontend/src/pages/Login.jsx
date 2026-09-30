@@ -5,7 +5,7 @@ import VishwasCard from '../components/VishwasCard.jsx';
 import { Alert, Icon, Modal, Spinner } from '../components/ui.jsx';
 import { api, HELPLINE } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
-import { CAPTCHA_ELEMENT_ID, loadMsg91Widget, widget } from '../lib/msg91Widget.js';
+import { CAPTCHA_ELEMENT_ID, captchaPending, loadMsg91Widget, widget } from '../lib/msg91Widget.js';
 
 export default function Login() {
   const [params, setParams] = useSearchParams();
@@ -127,6 +127,7 @@ function UserLogin() {
   // How OTP works on this server: MSG91 OTP Widget in the browser, or backend-sent OTP.
   const [otpConfig, setOtpConfig] = useState(null);
   const [sentTo, setSentTo] = useState('');
+  const [reqId, setReqId] = useState(undefined);
   useEffect(() => {
     api.get('/public/meta').then((m) => {
       const cfg = m.otp || { mode: 'server' };
@@ -147,7 +148,7 @@ function UserLogin() {
 
   // If the number or card changes after an OTP was sent, start over.
   useEffect(() => {
-    if (sent && sentTo !== `${mobile}|${cardId}`) { setSent(false); setOtp(''); setDevOtp(''); setInfo(''); setCountdown(0); }
+    if (sent && sentTo !== `${mobile}|${cardId}`) { setSent(false); setOtp(''); setDevOtp(''); setInfo(''); setCountdown(0); setReqId(undefined); }
   }, [mobile, cardId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function sendOtp() {
@@ -159,8 +160,9 @@ function UserLogin() {
       if (widgetMode) {
         const { identifier } = await api.post('/auth/otp/precheck', { mobile, cardId });
         await loadMsg91Widget(otpConfig);
-        if (sent) await widget.retry();
-        else await widget.send(identifier);
+        if (captchaPending()) throw new Error('Please complete the captcha below, then click Send OTP.');
+        if (sent) await widget.retry(reqId);
+        else setReqId(await widget.send(identifier));
         setCountdown(30);
         setInfo('OTP sent to your registered mobile number.');
       } else {
@@ -187,7 +189,7 @@ function UserLogin() {
     setBusy('verify');
     try {
       if (widgetMode) {
-        const accessToken = await widget.verify(otp);
+        const accessToken = await widget.verify(otp, reqId);
         login(await api.post('/auth/otp/widget-verify', { mobile, cardId, accessToken }));
       } else {
         login(await api.post('/auth/otp/verify', { mobile, cardId, otp }));
