@@ -3,7 +3,7 @@ import { one, many, query, SCHEMES } from '../db.js';
 import { authenticate, requireRole } from '../lib/auth.js';
 import { upload } from '../middleware/upload.js';
 import { putObject, deleteObject, objectKey } from '../lib/storage.js';
-import { sendSms } from '../lib/sms.js';
+import { sendTemplate } from '../lib/sms.js';
 import { renderCardPdf } from '../lib/cardPdf.js';
 import { validateCardInput } from '../lib/validate.js';
 import { firstName, findCard, nextCardId, peekCardId, serializeCard, validUntilFrom, verifyUrl, normalizeCardId } from '../lib/cards.js';
@@ -137,9 +137,16 @@ router.post('/cards/:cardId/sms', async (req, res) => {
   const card = await findCard(req.params.cardId);
   if (!card) return res.status(404).json({ error: 'Card not found.' });
   if (card.status !== 'verified') return res.status(409).json({ error: 'Only verified cards can be sent.' });
-  const result = await sendSms(card.mobile,
-    `Namaste ${firstName(card.full_name)} ji, your Deoband Vishwas Card ${card.card_id} is active. View/verify: ${verifyUrl(card.card_id)} . Login with this mobile number to download your e-card.`);
-  res.json({ message: result.delivered ? 'e-Card link sent by SMS.' : 'SMS logged on the server (no SMS provider configured yet).', ...result });
+  const name = firstName(card.full_name);
+  const link = verifyUrl(card.card_id);
+  try {
+    const result = await sendTemplate('ecard', card.mobile, { var1: name, var2: card.card_id, var3: link },
+      `Namaste ${name} ji, your Deoband Vishwas Card ${card.card_id} is active. View/verify: ${link} . Login with this mobile number to download your e-card.`);
+    res.json({ message: result.delivered ? `e-Card link sent by SMS to +91 ${card.mobile}.` : 'SMS printed in the server terminal (MSG91 e-card template not configured).', ...result });
+  } catch (err) {
+    console.error(`[sms] e-card SMS failed: ${err.message}`);
+    res.status(502).json({ error: `SMS could not be sent: ${err.message}` });
+  }
 });
 
 // ---------- Scheme availments ----------

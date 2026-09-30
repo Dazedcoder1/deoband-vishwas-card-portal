@@ -67,9 +67,14 @@ export const config = {
   localUploadDir: path.resolve(BACKEND_ROOT, process.env.LOCAL_UPLOAD_DIR || './uploads'),
 
   sms: {
-    provider: (process.env.SMS_PROVIDER || 'console').toLowerCase(),
-    apiKey: process.env.SMS_API_KEY || '',
-    senderId: process.env.SMS_SENDER_ID || '',
+    provider: (process.env.SMS_PROVIDER || 'console').toLowerCase(), // "msg91" | "console"
+    msg91: {
+      authKey: process.env.MSG91_AUTH_KEY || '',
+      otpTemplateId: process.env.MSG91_OTP_TEMPLATE_ID || '',
+      ecardTemplateId: process.env.MSG91_ECARD_TEMPLATE_ID || '',
+      cardIdTemplateId: process.env.MSG91_CARDID_TEMPLATE_ID || '',
+      baseUrl: process.env.MSG91_BASE_URL || 'https://control.msg91.com',
+    },
   },
 
   helpline: process.env.VITE_HELPLINE || '1800-120-DEOBAND',

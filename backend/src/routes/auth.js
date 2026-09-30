@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { one, query } from '../db.js';
 import { config } from '../config.js';
 import { signToken, authenticate } from '../lib/auth.js';
-import { sendSms } from '../lib/sms.js';
+import { sendOtp } from '../lib/sms.js';
 import { normalizeMobile, isValidMobile, normalizeCardId } from '../lib/cards.js';
 
 const router = Router();
@@ -33,10 +33,18 @@ router.post('/otp/send', limiter, async (req, res) => {
 
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   await query('UPDATE otps SET used = true WHERE mobile = @mobile AND card_id = @cardId AND used = false', { mobile, cardId });
-  await query('INSERT INTO otps (mobile, card_id, code_hash, expires_at, created_at) VALUES (@mobile, @cardId, @hash, @expires, @now)',
+  const { id: otpId } = await one(`INSERT INTO otps (mobile, card_id, code_hash, expires_at, created_at)
+                                   VALUES (@mobile, @cardId, @hash, @expires, @now) RETURNING id`,
     { mobile, cardId, hash: hashOtp(code), expires: now + config.otp.ttlSeconds * 1000, now });
 
-  await sendSms(mobile, `${code} is your Deoband Vishwas Card login OTP. Valid for ${Math.round(config.otp.ttlSeconds / 60)} minutes. Do not share it with anyone.`);
+  try {
+    await sendOtp(mobile, code);
+  } catch (err) {
+    console.error(`[sms] OTP to ${mobile} failed: ${err.message}`);
+    // Cancel this OTP and allow an immediate retry.
+    await query('UPDATE otps SET used = true, created_at = 0 WHERE id = @otpId', { otpId });
+    return res.status(502).json({ error: 'We could not send the OTP SMS right now. Please try again in a minute or call the helpline.' });
+  }
 
   res.json({
     message: 'OTP sent to your registered mobile number.',

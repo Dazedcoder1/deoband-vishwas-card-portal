@@ -9,7 +9,8 @@
     "start": "node src/server.js",
     "check:r2": "node scripts/check-r2.js",
     "seed": "node scripts/seed.js",
-    "db:migrate": "node scripts/migrate.js"
+    "db:migrate": "node scripts/migrate.js",
+    "check:sms": "node scripts/check-sms.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1143.0",

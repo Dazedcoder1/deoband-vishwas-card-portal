@@ -15,7 +15,8 @@
     "start": "npm run start -w backend",
     "check:r2": "npm run check:r2 -w backend",
     "seed": "npm run seed -w backend",
-    "db:migrate": "npm run db:migrate -w backend"
+    "db:migrate": "npm run db:migrate -w backend",
+    "check:sms": "npm run check:sms -w backend --"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

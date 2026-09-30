@@ -4,7 +4,7 @@ import { one, many, query, WARDS, SCHEMES } from '../db.js';
 import { config } from '../config.js';
 import { upload } from '../middleware/upload.js';
 import { putObject, objectKey } from '../lib/storage.js';
-import { sendSms } from '../lib/sms.js';
+import { sendTemplate } from '../lib/sms.js';
 import { findCard, maskMobile, maskName, nextCardId, normalizeMobile, isValidMobile } from '../lib/cards.js';
 import { validateCardInput } from '../lib/validate.js';
 
@@ -64,7 +64,11 @@ router.post('/find-card', applyLimiter, async (req, res) => {
   if (!isValidMobile(mobile)) return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
   const rows = await many('SELECT card_id FROM cards WHERE mobile = @mobile', { mobile });
   // We do not reveal card numbers on screen — they are sent by SMS.
-  if (rows.length) await sendSms(mobile, `Your Deoband Vishwas Card number(s): ${rows.map((r) => r.card_id).join(', ')}`);
+  if (rows.length) {
+    const ids = rows.map((r) => r.card_id).join(', ');
+    await sendTemplate('cardId', mobile, { var1: ids }, `Your Deoband Vishwas Card number(s): ${ids}`)
+      .catch((err) => console.error(`[sms] find-card SMS failed: ${err.message}`));
+  }
   res.json({ message: 'If this number is registered, your card number has been sent to it by SMS.' });
 });
 

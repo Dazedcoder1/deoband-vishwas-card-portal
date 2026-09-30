@@ -11,7 +11,7 @@ Citizen healthcare & welfare card portal for the Deoband Assembly constituency �
 ## Features
 
 - **Homepage** — hero with the official card artwork, key services, “why choose”, 3-step how-to, footer.
-- **Citizen login** — mobile number + card number + 6-digit OTP (hashed, 5-min expiry, 45 s resend, 5 attempts).
+- **Citizen login** — mobile number + card number + 6-digit OTP sent by **MSG91** (hashed, 5-min expiry, 45 s resend, 5 attempts).
 - **Citizen dashboard** — live card with Card ID + verification QR, e-card PDF download, share link, benefits availed, 9 welfare services.
 - **Admin console** (username/password, JWT)
   - *Make New ID* — register a beneficiary, upload photo (→ R2), auto card ID `DBD-1001-2026`, live preview, **Print PVC card**, **SMS e-card link**, **Download PDF**.
@@ -67,6 +67,23 @@ See `.env.example` for every variable with comments.
 3. `npm run db:migrate` — creates `admins`, `cards`, `availments`, `otps` and the `card_seq` sequence (card numbers start at 1001). Safe to run repeatedly.
 4. `GET /api/health` shows `"database": { "ok": true }` when connected.
 
+## MSG91 SMS setup (OTP login)
+
+The backend creates and checks each OTP itself (hashed, expiry, attempt limits); MSG91 only delivers it.
+
+1. **MSG91 dashboard → Authkey** → copy it into `MSG91_AUTH_KEY`.
+2. **SendOTP → Templates → Create** an OTP template that contains `##OTP##`, e.g.
+   `##OTP## is your Deoband Vishwas Card login OTP. Do not share it. - <SENDER>`
+   It must match a DLT-approved template (TRAI rule for SMS in India). Copy the **Template ID** into `MSG91_OTP_TEMPLATE_ID`.
+3. Optional **Flow templates** (SMS → Templates) for the other messages:
+   - `MSG91_ECARD_TEMPLATE_ID` — e-card link sent from the admin console. Variables: `##var1##` name, `##var2##` card ID, `##var3##` verify link.
+   - `MSG91_CARDID_TEMPLATE_ID` — "Find Card ID?" on the login page. Variable: `##var1##` card number(s).
+   Leave them empty and those messages are just printed in the backend terminal.
+4. Set `SMS_PROVIDER=msg91`, then test: `npm run check:sms -- 98XXXXXXXX` (sends a real test OTP).
+5. Once real SMS arrive, set `OTP_DEV_MODE=false` so the OTP is no longer shown on screen.
+
+If MSG91 rejects a message the citizen sees *"We could not send the OTP SMS right now"*, the failed OTP is cancelled so they can retry straight away, and the reason is logged in the backend terminal.
+
 ## Cloudflare R2 setup
 
 1. Cloudflare dashboard → **R2** → **Create bucket** (e.g. `vishwas-card`). Keep it private.
@@ -89,7 +106,7 @@ Until real keys are in place, keep `STORAGE_DRIVER=local` — photos go to `back
 ## Going to production
 
 1. `NODE_ENV=production`, a long random `JWT_SECRET`, a strong `ADMIN_PASSWORD`.
-2. `OTP_DEV_MODE=false` **and** wire an SMS provider in `backend/src/lib/sms.js` (MSG91 / Fast2SMS / Twilio…) — otherwise citizens can't receive OTPs.
+2. `SMS_PROVIDER=msg91` with your MSG91 keys, and `OTP_DEV_MODE=false`.
 3. `CLIENT_URL=https://your-domain` (used for CORS and the QR/SMS verify links).
 4. `npm run build` then `npm start` — the backend also serves `frontend/dist`, so one Node process runs the whole site.
    Or host the frontend separately (Cloudflare Pages / Vercel) and set `VITE_API_URL=https://api.your-domain/api` at build time.
@@ -105,6 +122,7 @@ Until real keys are in place, keep `STORAGE_DRIVER=local` — photos go to `back
 | `npm run db:migrate` | create/update tables in Neon |
 | `npm run seed` | add demo beneficiaries & benefit records |
 | `npm run check:r2` | verify R2 / S3 bucket credentials (upload, read, delete) |
+| `npm run check:sms -- 98XXXXXXXX` | send a test OTP through MSG91 |
 
 ## API overview
 
@@ -131,12 +149,12 @@ deoband-vishwas-card/
 ├── package.json            # npm workspaces + root scripts
 ├── backend/
 │   ├── assets/card-template.png   # official card artwork used for the PDF
-│   ├── scripts/            # migrate.js, seed.js, check-r2.js
+│   ├── scripts/            # migrate.js, seed.js, check-r2.js, check-sms.js
 │   └── src/
 │       ├── server.js       # Express app
 │       ├── config.js       # reads ../.env
 │       ├── db.js           # PostgreSQL pool, schema, admin seeding
-│       ├── lib/            # storage (R2/local), auth, OTP/SMS, PDF, validation
+│       ├── lib/            # storage (R2/S3/local), auth, MSG91 SMS, PDF, validation
 │       └── routes/         # auth, public, me (citizen), admin
 └── frontend/
     ├── public/card-template.png   # same artwork, overlaid with ID + QR in the browser
