@@ -5,6 +5,7 @@ import VishwasCard from '../components/VishwasCard.jsx';
 import { Alert, Icon, Modal, Spinner } from '../components/ui.jsx';
 import { api, HELPLINE } from '../lib/api.js';
 import { useAuth } from '../lib/auth.jsx';
+import { CAPTCHA_ELEMENT_ID, loadMsg91Widget, widget } from '../lib/msg91Widget.js';
 
 export default function Login() {
   const [params, setParams] = useSearchParams();
@@ -123,6 +124,18 @@ function UserLogin() {
   const [info, setInfo] = useState('');
   const [findOpen, setFindOpen] = useState(false);
 
+  // How OTP works on this server: MSG91 OTP Widget in the browser, or backend-sent OTP.
+  const [otpConfig, setOtpConfig] = useState(null);
+  const [sentTo, setSentTo] = useState('');
+  useEffect(() => {
+    api.get('/public/meta').then((m) => {
+      const cfg = m.otp || { mode: 'server' };
+      setOtpConfig(cfg);
+      if (cfg.mode === 'widget') loadMsg91Widget(cfg).catch((e) => setError(e.message));
+    }).catch(() => setOtpConfig({ mode: 'server' }));
+  }, []);
+  const widgetMode = otpConfig?.mode === 'widget';
+
   useEffect(() => {
     if (countdown <= 0) return;
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
@@ -132,17 +145,32 @@ function UserLogin() {
   const cardId = cardNo.toUpperCase().startsWith('DBD') ? cardNo.toUpperCase() : `DBD-${cardNo.toUpperCase().replace(/^-/, '')}`;
   const mobileOk = /^[6-9]\d{9}$/.test(mobile);
 
+  // If the number or card changes after an OTP was sent, start over.
+  useEffect(() => {
+    if (sent && sentTo !== `${mobile}|${cardId}`) { setSent(false); setOtp(''); setDevOtp(''); setInfo(''); setCountdown(0); }
+  }, [mobile, cardId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function sendOtp() {
     setError(''); setInfo('');
     if (!mobileOk) return setError('Enter your 10-digit registered mobile number.');
     if (cardNo.replace(/\D/g, '').length < 4) return setError('Enter your Vishwas Card number, e.g. DBD-1001-2026.');
     setBusy('send');
     try {
-      const r = await api.post('/auth/otp/send', { mobile, cardId });
+      if (widgetMode) {
+        const { identifier } = await api.post('/auth/otp/precheck', { mobile, cardId });
+        await loadMsg91Widget(otpConfig);
+        if (sent) await widget.retry();
+        else await widget.send(identifier);
+        setCountdown(30);
+        setInfo('OTP sent to your registered mobile number.');
+      } else {
+        const r = await api.post('/auth/otp/send', { mobile, cardId });
+        setCountdown(r.resendIn || 45);
+        setDevOtp(r.devOtp || '');
+        setInfo(r.message);
+      }
       setSent(true);
-      setCountdown(r.resendIn || 45);
-      setDevOtp(r.devOtp || '');
-      setInfo(r.message);
+      setSentTo(`${mobile}|${cardId}`);
     } catch (e) {
       setError(e.message);
       if (e.data?.retryAfter) setCountdown(e.data.retryAfter);
@@ -155,10 +183,15 @@ function UserLogin() {
     e.preventDefault();
     setError('');
     if (!sent) return sendOtp();
-    if (!/^\d{6}$/.test(otp)) return setError('Enter the 6-digit OTP sent to your mobile.');
+    if (!/^\d{4,6}$/.test(otp)) return setError('Enter the OTP sent to your mobile.');
     setBusy('verify');
     try {
-      login(await api.post('/auth/otp/verify', { mobile, cardId, otp }));
+      if (widgetMode) {
+        const accessToken = await widget.verify(otp);
+        login(await api.post('/auth/otp/widget-verify', { mobile, cardId, accessToken }));
+      } else {
+        login(await api.post('/auth/otp/verify', { mobile, cardId, otp }));
+      }
       navigate(location.state?.from?.startsWith('/dashboard') ? location.state.from : '/dashboard', { replace: true });
     } catch (e2) {
       setError(e2.message);
@@ -196,7 +229,7 @@ function UserLogin() {
       <div>
         <label className="label" htmlFor="otp">One Time Password (OTP)</label>
         <div className="flex gap-3">
-          <input id="otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="Enter 6-digit OTP"
+          <input id="otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="Enter OTP"
             className="input tracking-[0.3em] text-lg placeholder:tracking-normal placeholder:text-[15px]" disabled={!sent}
             value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} />
           <button type="button" onClick={sendOtp} disabled={busy === 'send' || countdown > 0}
@@ -209,6 +242,8 @@ function UserLogin() {
           {countdown > 0 && <span>Resend in <b className="text-primary-deep">00:{String(countdown).padStart(2, '0')}</b></span>}
         </div>
       </div>
+
+      {widgetMode && <div id={CAPTCHA_ELEMENT_ID} className="empty:hidden" />}
 
       {devOtp && <Alert kind="dev">Development mode — your OTP is <b className="tracking-widest">{devOtp}</b>. (Set <code>OTP_DEV_MODE=false</code> in production.)</Alert>}
       {info && !devOtp && <Alert kind="success">{info}</Alert>}

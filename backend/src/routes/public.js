@@ -11,7 +11,13 @@ import { validateCardInput } from '../lib/validate.js';
 const router = Router();
 
 router.get('/meta', (req, res) => {
-  res.json({ wards: WARDS, schemes: SCHEMES, constituency: config.card.constituency, cardPrefix: config.card.prefix });
+  res.json({
+    wards: WARDS, schemes: SCHEMES, constituency: config.card.constituency, cardPrefix: config.card.prefix,
+    // Tells the login page how to do OTP. Widget ID + tokenAuth are public by design (they're embedded in the page).
+    otp: config.otp.mode === 'widget'
+      ? { mode: 'widget', widgetId: config.sms.msg91.widgetId, tokenAuth: config.sms.msg91.widgetTokenAuth }
+      : { mode: 'server' },
+  });
 });
 
 router.get('/stats', async (req, res) => {

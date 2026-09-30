@@ -35,6 +35,9 @@ export const config = {
   },
 
   otp: {
+    // "widget" = MSG91 OTP Widget in the browser (MSG91 sends + checks the code, we confirm the token)
+    // "server" = backend generates the code and sends it (MSG91 SendOTP API, or printed in the terminal)
+    mode: (process.env.OTP_MODE || 'server').toLowerCase() === 'widget' ? 'widget' : 'server',
     devMode: bool(process.env.OTP_DEV_MODE, !isProd),
     ttlSeconds: int(process.env.OTP_TTL_SECONDS, 300),
     resendSeconds: int(process.env.OTP_RESEND_SECONDS, 45),
@@ -73,6 +76,9 @@ export const config = {
       otpTemplateId: process.env.MSG91_OTP_TEMPLATE_ID || '',
       ecardTemplateId: process.env.MSG91_ECARD_TEMPLATE_ID || '',
       cardIdTemplateId: process.env.MSG91_CARDID_TEMPLATE_ID || '',
+      // OTP Widget (MSG91 → OTP → Widget): public values the browser needs
+      widgetId: process.env.MSG91_WIDGET_ID || '',
+      widgetTokenAuth: process.env.MSG91_WIDGET_TOKEN_AUTH || '',
       baseUrl: process.env.MSG91_BASE_URL || 'https://control.msg91.com',
     },
   },

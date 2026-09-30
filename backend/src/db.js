@@ -111,6 +111,12 @@ CREATE TABLE IF NOT EXISTS otps (
 );
 CREATE INDEX IF NOT EXISTS idx_otps_lookup ON otps(mobile, card_id);
 
+-- MSG91 widget access tokens already used to log in (stops a token being replayed)
+CREATE TABLE IF NOT EXISTS used_otp_tokens (
+  token_hash TEXT PRIMARY KEY,
+  created_at BIGINT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS availments (
   id          SERIAL PRIMARY KEY,
   card_id     TEXT NOT NULL REFERENCES cards(card_id) ON UPDATE CASCADE,
@@ -158,6 +164,7 @@ export async function initDb() {
     }
     // Housekeeping: drop OTPs older than a day.
     await client.query('DELETE FROM otps WHERE created_at < $1', [Date.now() - 864e5]);
+    await client.query('DELETE FROM used_otp_tokens WHERE created_at < $1', [Date.now() - 7 * 864e5]);
   } finally {
     await client.query('SELECT pg_advisory_unlock(772211)').catch(() => {});
     client.release();

@@ -6,6 +6,7 @@ import { one, query } from '../db.js';
 import { config } from '../config.js';
 import { signToken, authenticate } from '../lib/auth.js';
 import { sendOtp } from '../lib/sms.js';
+import { verifyWidgetToken } from '../lib/msg91Widget.js';
 import { normalizeMobile, isValidMobile, normalizeCardId } from '../lib/cards.js';
 
 const router = Router();
@@ -15,16 +16,75 @@ const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders
 
 const hashOtp = (code) => crypto.createHmac('sha256', config.jwtSecret).update(code).digest('hex');
 
-// POST /api/auth/otp/send  { mobile, cardId }
-router.post('/otp/send', limiter, async (req, res) => {
+/** Checks mobile + card number belong together. Sends the error response and returns null if not. */
+async function findLoginCard(req, res) {
   const mobile = normalizeMobile(req.body.mobile);
   const cardId = normalizeCardId(req.body.cardId);
-  if (!isValidMobile(mobile)) return res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' });
-  if (!cardId) return res.status(400).json({ error: 'Enter your Vishwas Card number.' });
+  if (!isValidMobile(mobile)) { res.status(400).json({ error: 'Enter a valid 10-digit mobile number.' }); return null; }
+  if (!cardId) { res.status(400).json({ error: 'Enter your Vishwas Card number.' }); return null; }
+  const card = await one('SELECT card_id, full_name, status FROM cards WHERE card_id = @cardId AND mobile = @mobile', { cardId, mobile });
+  if (!card) { res.status(404).json({ error: 'No Vishwas Card matches this mobile number and card number.' }); return null; }
+  if (card.status === 'suspended') { res.status(403).json({ error: 'This card is suspended. Please contact the helpline.' }); return null; }
+  return { mobile, cardId, card };
+}
 
-  const card = await one('SELECT card_id, status FROM cards WHERE card_id = @cardId AND mobile = @mobile', { cardId, mobile });
-  if (!card) return res.status(404).json({ error: 'No Vishwas Card matches this mobile number and card number.' });
-  if (card.status === 'suspended') return res.status(403).json({ error: 'This card is suspended. Please contact the helpline.' });
+const loginResponse = (card) => {
+  const user = { role: 'user', cardId: card.card_id, name: card.full_name };
+  return { token: signToken(user), user };
+};
+
+const onlyMode = (mode) => (req, res, next) =>
+  config.otp.mode === mode ? next() : res.status(400).json({ error: `OTP login is configured for ${config.otp.mode} mode on this server.` });
+
+// ---------------------------------------------------------------------------
+// OTP_MODE=widget — MSG91 OTP Widget runs in the browser
+// ---------------------------------------------------------------------------
+
+// POST /api/auth/otp/precheck  { mobile, cardId } → confirm the card before the widget sends an OTP
+router.post('/otp/precheck', limiter, onlyMode('widget'), async (req, res) => {
+  const found = await findLoginCard(req, res);
+  if (found) res.json({ ok: true, identifier: `91${found.mobile}` });
+});
+
+// POST /api/auth/otp/widget-verify  { mobile, cardId, accessToken }
+router.post('/otp/widget-verify', limiter, onlyMode('widget'), async (req, res) => {
+  const found = await findLoginCard(req, res);
+  if (!found) return;
+  const accessToken = String(req.body.accessToken || '');
+  if (accessToken.length < 20) return res.status(400).json({ error: 'OTP verification is missing. Please verify the OTP again.' });
+
+  const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+  if (await one('SELECT 1 AS used FROM used_otp_tokens WHERE token_hash = @tokenHash', { tokenHash })) {
+    return res.status(400).json({ error: 'This OTP has already been used. Please request a new one.' });
+  }
+
+  let verifiedMobile;
+  try {
+    verifiedMobile = await verifyWidgetToken(accessToken);
+  } catch (err) {
+    console.error(`[otp] widget token check failed: ${err.message}`);
+    return res.status(err.rejected ? 401 : 502).json({
+      error: err.rejected ? 'OTP verification failed or expired. Please request a new OTP.' : 'Could not confirm the OTP with MSG91 right now. Please try again.',
+    });
+  }
+  if (verifiedMobile !== found.mobile) {
+    console.warn(`[otp] widget token was for ${verifiedMobile.slice(0, 2)}XXXXXX${verifiedMobile.slice(-2)}, not the card's registered mobile`);
+    return res.status(401).json({ error: 'The OTP was verified for a different mobile number.' });
+  }
+
+  await query('INSERT INTO used_otp_tokens (token_hash, created_at) VALUES (@tokenHash, @now) ON CONFLICT DO NOTHING', { tokenHash, now: Date.now() });
+  res.json(loginResponse(found.card));
+});
+
+// ---------------------------------------------------------------------------
+// OTP_MODE=server — backend generates the OTP and sends it (MSG91 SendOTP API / console)
+// ---------------------------------------------------------------------------
+
+// POST /api/auth/otp/send  { mobile, cardId }
+router.post('/otp/send', limiter, onlyMode('server'), async (req, res) => {
+  const found = await findLoginCard(req, res);
+  if (!found) return;
+  const { mobile, cardId } = found;
 
   const now = Date.now();
   const last = await one('SELECT created_at FROM otps WHERE mobile = @mobile AND card_id = @cardId ORDER BY id DESC LIMIT 1', { mobile, cardId });
@@ -54,7 +114,7 @@ router.post('/otp/send', limiter, async (req, res) => {
 });
 
 // POST /api/auth/otp/verify  { mobile, cardId, otp }
-router.post('/otp/verify', limiter, async (req, res) => {
+router.post('/otp/verify', limiter, onlyMode('server'), async (req, res) => {
   const mobile = normalizeMobile(req.body.mobile);
   const cardId = normalizeCardId(req.body.cardId);
   const otp = String(req.body.otp || '').trim();
@@ -71,8 +131,7 @@ router.post('/otp/verify', limiter, async (req, res) => {
   await query('UPDATE otps SET used = true WHERE id = @id', { id: row.id });
 
   const card = await one('SELECT id, card_id, full_name FROM cards WHERE card_id = @cardId', { cardId });
-  const user = { role: 'user', cardId: card.card_id, name: card.full_name };
-  res.json({ token: signToken(user), user });
+  res.json(loginResponse(card));
 });
 
 // POST /api/auth/admin/login  { username, password }

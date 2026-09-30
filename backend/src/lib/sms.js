@@ -62,13 +62,25 @@ export async function sendTemplate(kind, mobile, vars, fallbackText) {
   return { delivered: true, provider: 'msg91', requestId: data.message };
 }
 
+if (config.otp.mode === 'widget') {
+  const missing = [['MSG91_AUTH_KEY', msg91.authKey], ['MSG91_WIDGET_ID', msg91.widgetId], ['MSG91_WIDGET_TOKEN_AUTH', msg91.widgetTokenAuth]]
+    .filter(([, v]) => !v).map(([k]) => k);
+  if (missing.length) {
+    console.error(`[otp] OTP_MODE=widget but ${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} missing in .env`);
+    process.exit(1);
+  }
+  console.log(`[otp] Using MSG91 OTP Widget ${msg91.widgetId}`);
+}
+
 if (config.sms.provider === 'msg91') {
-  const missing = [['MSG91_AUTH_KEY', msg91.authKey], ['MSG91_OTP_TEMPLATE_ID', msg91.otpTemplateId]].filter(([, v]) => !v).map(([k]) => k);
+  const required = [['MSG91_AUTH_KEY', msg91.authKey]];
+  if (config.otp.mode === 'server') required.push(['MSG91_OTP_TEMPLATE_ID', msg91.otpTemplateId]);
+  const missing = required.filter(([, v]) => !v).map(([k]) => k);
   if (missing.length) {
     console.error(`[sms] SMS_PROVIDER=msg91 but ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing in .env`);
     process.exit(1);
   }
-  console.log(`[sms] Using MSG91 (OTP template ${msg91.otpTemplateId}${msg91.ecardTemplateId ? ', e-card template set' : ''})`);
+  console.log(`[sms] Using MSG91${config.otp.mode === 'server' ? ` (OTP template ${msg91.otpTemplateId})` : ''}${msg91.ecardTemplateId ? ', e-card template set' : ''}`);
 } else {
   console.log('[sms] SMS_PROVIDER=console — messages are printed here, not sent');
 }
