@@ -87,3 +87,15 @@ export const formatDate = (d) =>
 export const formatMobile = (m) => (m ? `+91 ${m.slice(0, 5)} ${m.slice(5)}` : '');
 
 export const rupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
+const REQUEST_STATUS = {
+  requested: { label: 'Requested', cls: 'chip-pending', icon: 'schedule' },
+  in_progress: { label: 'In progress', cls: 'chip-lav', icon: 'autorenew' },
+  completed: { label: 'Completed', cls: 'chip-verified', icon: 'check_circle' },
+  rejected: { label: 'Not approved', cls: 'chip-suspended', icon: 'cancel' },
+};
+
+export function RequestStatus({ status }) {
+  const s = REQUEST_STATUS[status] || REQUEST_STATUS.requested;
+  return <span className={`${s.cls} whitespace-nowrap`}><Icon name={s.icon} className="text-sm" /> {s.label}</span>;
+}

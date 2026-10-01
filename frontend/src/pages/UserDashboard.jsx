@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import PortalHeader from '../components/PortalHeader.jsx';
 import VishwasCard from '../components/VishwasCard.jsx';
-import { Alert, Icon, Modal, Spinner, StatusChip, Toast, formatDate, rupees } from '../components/ui.jsx';
+import { Alert, Icon, Modal, Spinner, StatusChip, Toast, formatDate, rupees, RequestStatus } from '../components/ui.jsx';
 import { api, HELPLINE } from '../lib/api.js';
 import { CITIZEN_SERVICES } from '../lib/content.js';
 
@@ -11,10 +11,39 @@ export default function UserDashboard() {
   const [service, setService] = useState(null);
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [requests, setRequests] = useState([]);
+  const [note, setNote] = useState('');
+  const [requesting, setRequesting] = useState(false);
+  const [requestError, setRequestError] = useState('');
 
+  const loadRequests = () => api.get('/me/requests').then((r) => setRequests(r.items)).catch(() => {});
   useEffect(() => {
     api.get('/me/card').then(setData).catch((e) => setError(e.message));
+    loadRequests();
   }, []);
+
+  // Latest open request per service (to show "Requested" on the card)
+  const openByService = Object.fromEntries(
+    requests.filter((r) => r.status === 'requested' || r.status === 'in_progress').map((r) => [r.service, r]),
+  );
+
+  function openService(s) {
+    setService(s); setNote(''); setRequestError('');
+  }
+
+  async function availService() {
+    setRequesting(true); setRequestError('');
+    try {
+      const r = await api.post('/me/requests', { service: service.title, note });
+      setToast({ message: r.message });
+      setService(null);
+      loadRequests();
+    } catch (e) {
+      setRequestError(e.message);
+    } finally {
+      setRequesting(false);
+    }
+  }
 
   const card = data?.card;
   const firstName = card?.fullName?.split(' ')[0];
@@ -137,6 +166,24 @@ export default function UserDashboard() {
               </div>
             </section>
 
+            {requests.length > 0 && (
+              <section className="panel p-6">
+                <h2 className="font-extrabold text-primary-deep flex items-center gap-2"><Icon name="assignment" className="text-gold" /> My Service Requests</h2>
+                <ul className="mt-4 divide-y divide-lavender">
+                  {requests.map((r) => (
+                    <li key={r.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">{r.service}</p>
+                        <p className="text-xs text-ink-muted">Requested {formatDate(r.createdAt)}{r.note ? ` • “${r.note}”` : ''}</p>
+                        {r.adminNote && <p className="text-xs text-primary-deep mt-0.5"><b>Desk note:</b> {r.adminNote}</p>}
+                      </div>
+                      <RequestStatus status={r.status} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             {/* Services directory */}
             <section>
               <p className="text-xs font-bold uppercase tracking-wider text-gold-ink flex items-center gap-1.5"><Icon name="medical_services" className="text-base" /> Constituency Services Directory</p>
@@ -151,21 +198,33 @@ export default function UserDashboard() {
                 </div>
               </div>
               <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {CITIZEN_SERVICES.map((s) => (
-                  <button key={s.title} type="button" onClick={() => setService(s)}
-                    className="group text-left panel p-5 hover:-translate-y-1 hover:shadow-id hover:border-gold/50 transition-all flex flex-col">
-                    <div className="flex items-start justify-between">
-                      <span className="w-12 h-12 rounded-xl bg-lavender-soft border border-lavender grid place-items-center text-primary-deep group-hover:bg-primary group-hover:text-white transition"><Icon name={s.icon} /></span>
-                      <span className="chip bg-gold/10 text-gold-ink border border-gold/30">{s.tag}</span>
+                {CITIZEN_SERVICES.map((s) => {
+                  const open = openByService[s.title];
+                  return (
+                    <div key={s.title} className="group panel p-5 hover:-translate-y-1 hover:shadow-id hover:border-gold/50 transition-all flex flex-col">
+                      <div className="flex items-start justify-between">
+                        <span className="w-12 h-12 rounded-xl bg-lavender-soft border border-lavender grid place-items-center text-primary-deep group-hover:bg-primary group-hover:text-white transition"><Icon name={s.icon} /></span>
+                        <span className="chip bg-gold/10 text-gold-ink border border-gold/30">{s.tag}</span>
+                      </div>
+                      <h3 className="mt-4 font-extrabold text-lg text-primary-deep">{s.title}</h3>
+                      <p className="font-deva text-sm font-semibold text-gold-ink">{s.hi}</p>
+                      <p className="mt-2 text-sm text-ink-body flex-1">{s.text}</p>
+                      <div className="mt-4 pt-3 border-t border-lavender">
+                        {open ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <RequestStatus status={open.status} />
+                            <span className="text-xs text-ink-muted">since {formatDate(open.createdAt)}</span>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => openService(s)} disabled={card.status !== 'verified'}
+                            className="btn w-full rounded-xl bg-primary hover:bg-primary-dark text-white py-2.5 text-sm disabled:opacity-50">
+                            <Icon name="volunteer_activism" className="text-gold-light" /> Avail this Service
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <h3 className="mt-4 font-extrabold text-lg text-primary-deep">{s.title}</h3>
-                    <p className="font-deva text-sm font-semibold text-gold-ink">{s.hi}</p>
-                    <p className="mt-2 text-sm text-ink-body flex-1">{s.text}</p>
-                    <span className="mt-4 pt-3 border-t border-lavender flex items-center justify-between text-sm font-bold text-primary-deep">
-                      Explore Benefit <Icon name="arrow_forward" className="group-hover:translate-x-1 transition-transform" />
-                    </span>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             </section>
 
@@ -192,12 +251,26 @@ export default function UserDashboard() {
       <Modal open={!!service} onClose={() => setService(null)} title={service?.title || ''}>
         {service && (
           <div className="space-y-4">
-            <span className="chip bg-gold/15 text-gold-ink border border-gold/40"><Icon name="rocket_launch" className="text-sm" /> Launching Soon • <span className="font-deva">जल्द ही उपलब्ध</span></span>
+            <div className="flex items-center gap-3">
+              <span className="w-12 h-12 rounded-xl bg-lavender-soft border border-lavender grid place-items-center text-primary-deep"><Icon name={service.icon} /></span>
+              <div>
+                <p className="font-deva font-semibold text-gold-ink">{service.hi}</p>
+                <span className="chip bg-gold/10 text-gold-ink border border-gold/30">{service.tag}</span>
+              </div>
+            </div>
             <p className="text-ink-body">{service.text}</p>
-            <Alert kind="info">This digital service is being rolled out across Deoband facilities. Until then, call the welfare helpdesk with your Card ID ({card?.cardId}) and our team will arrange it for you.</Alert>
+            <div>
+              <label className="label" htmlFor="svc-note">Details for our team <span className="hi">(optional)</span></label>
+              <textarea id="svc-note" rows={3} maxLength={500} className="input" value={note} onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g. patient name, preferred date, hospital, or what you need help with" />
+            </div>
+            <Alert kind="info">Your request is linked to card <b>{card?.cardId}</b>. The welfare desk will call you on <b>+91 {card?.mobile}</b>.</Alert>
+            <Alert onClose={() => setRequestError('')}>{requestError}</Alert>
             <div className="flex gap-3 justify-end">
-              <button type="button" className="btn-ghost" onClick={() => setService(null)}>Close</button>
-              <a href={`tel:${HELPLINE}`} className="btn-primary rounded-xl"><Icon name="call" /> Call {HELPLINE}</a>
+              <button type="button" className="btn-ghost" onClick={() => setService(null)}>Cancel</button>
+              <button type="button" disabled={requesting} onClick={availService} className="btn-primary rounded-xl">
+                {requesting ? <Spinner /> : <Icon name="volunteer_activism" />} Avail this Service
+              </button>
             </div>
           </div>
         )}

@@ -19,7 +19,11 @@ export const config = {
   env: process.env.NODE_ENV || 'development',
   isProd,
   port: int(process.env.PORT, 5000),
-  clientUrl: (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, ''),
+  // Where the frontend runs (one or more origins, comma-separated) — used for CORS.
+  clientOrigins: (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
+  // Public address of the website — used inside QR codes and SMS links. Must be reachable from a phone.
+  // Leave empty in development: the backend then uses this PC's Wi-Fi/LAN address (see lib/publicUrl.js).
+  publicAppUrl: (process.env.PUBLIC_APP_URL || '').trim().replace(/\/$/, ''),
 
   jwtSecret: process.env.JWT_SECRET || 'dev-only-insecure-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',

@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import multer from 'multer';
 import { config, REPO_ROOT } from './config.js';
 import { initDb, pool } from './db.js';
+import { publicAppUrl, publicUrlSource } from './lib/publicUrl.js';
 import { driver as storageDriver, checkStorage } from './lib/storage.js';
 import authRoutes from './routes/auth.js';
 import publicRoutes from './routes/public.js';
@@ -17,7 +18,7 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false }));
-app.use(cors({ origin: config.clientUrl.split(',').map((s) => s.trim()), credentials: false }));
+app.use(cors({ origin: config.clientOrigins, credentials: false }));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', async (req, res) => {
@@ -67,6 +68,7 @@ try {
 
 const server = app.listen(config.port, () => {
   console.log(`[api] Deoband Vishwas Card API running on http://localhost:${config.port} (${config.env})`);
+  console.log(`[api] QR codes & SMS links point to ${publicAppUrl} (${publicUrlSource})`);
   if (config.otp.devMode) console.log('[api] OTP_DEV_MODE is ON — OTPs are shown in API responses. Turn it off in production.');
 });
 

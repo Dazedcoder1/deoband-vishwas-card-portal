@@ -111,6 +111,21 @@ CREATE TABLE IF NOT EXISTS otps (
 );
 CREATE INDEX IF NOT EXISTS idx_otps_lookup ON otps(mobile, card_id);
 
+-- Citizens asking to avail a service from their dashboard ("Avail this Service")
+CREATE TABLE IF NOT EXISTS service_requests (
+  id          SERIAL PRIMARY KEY,
+  card_id     TEXT NOT NULL REFERENCES cards(card_id) ON UPDATE CASCADE,
+  service     TEXT NOT NULL,
+  note        TEXT,
+  status      TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','in_progress','completed','rejected')),
+  admin_note  TEXT,
+  handled_by  INTEGER REFERENCES admins(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_service_requests_card   ON service_requests(card_id);
+CREATE INDEX IF NOT EXISTS idx_service_requests_status ON service_requests(status);
+
 -- MSG91 widget access tokens already used to log in (stops a token being replayed)
 CREATE TABLE IF NOT EXISTS used_otp_tokens (
   token_hash TEXT PRIMARY KEY,
@@ -182,6 +197,20 @@ export const WARDS = [
   'Miragpur',
   'Talheri Buzurg',
   'Deoband Rural',
+];
+
+// Services shown on the citizen dashboard ("Beneficiary Healthcare & Welfare Services").
+// Keep in sync with CITIZEN_SERVICES in frontend/src/lib/content.js (titles must match).
+export const SERVICES = [
+  'Free Ambulance',
+  'OPD Booking',
+  'Hospital Admin',
+  'Education Facility',
+  'Govt Scheme Desk',
+  'Health Check-Up',
+  'Community Welfare',
+  'Patient Assistant',
+  'Connect Executive',
 ];
 
 export const SCHEMES = [

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import SiteHeader from '../components/SiteHeader.jsx';
 import SiteFooter from '../components/SiteFooter.jsx';
 import VishwasCard from '../components/VishwasCard.jsx';
+import { LogoMark } from '../components/Brand.jsx';
 import { Icon } from '../components/ui.jsx';
 import { api } from '../lib/api.js';
 import { KEY_SERVICES, WHY_CHOOSE, STEPS } from '../lib/content.js';
@@ -158,29 +159,18 @@ export default function Home() {
   );
 }
 
-/** Photo tile. Drop a real photo at frontend/public/images/outreach.jpg to replace the illustration. */
+/** Official emblem — Dr. B.R. Ambedkar College of Medical Sciences & Hospital, Deoband (welfare partner). */
 function OutreachTile() {
-  const [hasPhoto, setHasPhoto] = useState(true);
   return (
     <div className="relative w-full max-w-[360px] group">
-      <div className="absolute -inset-2 bg-gradient-to-tr from-gold to-purple-600 rounded-3xl opacity-30 group-hover:opacity-60 blur-md transition-all duration-500" />
-      <div className="relative rounded-2xl overflow-hidden border-2 border-gold shadow-xl h-80 bg-gradient-to-br from-primary-light via-primary to-primary-dark">
-        {hasPhoto ? (
-          <img src="/images/outreach.jpg" alt="Doctor examining an elderly patient at a village health camp" onError={() => setHasPhoto(false)}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="grid grid-cols-3 gap-4 opacity-90">
-              {['stethoscope', 'elderly', 'favorite', 'medication', 'health_and_safety', 'family_restroom'].map((i) => (
-                <span key={i} className="w-16 h-16 rounded-2xl bg-white/10 border border-white/15 grid place-items-center"><Icon name={i} className="text-3xl text-gold-light" /></span>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-primary/85 via-transparent to-transparent" />
-        <div className="absolute bottom-3 left-4 right-4 text-white">
-          <span className="text-xs uppercase font-bold tracking-wider text-gold-light">Free Village Outreach</span>
-          <p className="text-sm font-semibold">Compassionate Medical Care for Seniors &amp; Families</p>
+      <div className="absolute -inset-2 bg-gradient-to-tr from-gold to-purple-600 rounded-3xl opacity-25 group-hover:opacity-50 blur-md transition-all duration-500" />
+      <div className="relative rounded-2xl overflow-hidden border-2 border-gold shadow-xl bg-gradient-to-b from-white via-white to-lavender-soft">
+        <div className="px-8 pt-6 pb-2">
+          <LogoMark large className="w-full h-auto aspect-square drop-shadow-xl group-hover:scale-[1.03] transition-transform duration-700" />
+        </div>
+        <div className="bg-gradient-to-r from-primary-dark to-primary px-4 py-3 text-white">
+          <span className="text-xs uppercase font-bold tracking-wider text-gold-light">Official Welfare Partner</span>
+          <p className="text-sm font-semibold leading-snug">Dr. B.R. Ambedkar College of Medical Sciences &amp; Hospital, Deoband</p>
         </div>
       </div>
     </div>

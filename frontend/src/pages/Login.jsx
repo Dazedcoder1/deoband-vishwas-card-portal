@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Brand } from '../components/Brand.jsx';
+import { Brand, LogoMark } from '../components/Brand.jsx';
 import VishwasCard from '../components/VishwasCard.jsx';
 import { Alert, Icon, Modal, Spinner } from '../components/ui.jsx';
 import { api, HELPLINE } from '../lib/api.js';
@@ -45,9 +45,12 @@ export default function Login() {
               <path d="M0 380 Q220 300 400 440" stroke="#E5B44E" fill="none" strokeWidth="1.5" />
             </svg>
             <div className="relative space-y-6">
-              <span className="inline-flex items-center gap-2 rounded-full border border-gold/40 bg-white/5 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-gold-light">
-                <span className="w-1.5 h-1.5 rounded-full bg-gold" /> Civic Healthcare Initiative
-              </span>
+              <div className="flex items-center gap-4">
+                <LogoMark large className="w-20 h-20 sm:w-24 sm:h-24 drop-shadow-xl shrink-0" />
+                <span className="inline-flex items-center gap-2 rounded-full border border-gold/40 bg-white/5 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-gold-light">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gold" /> Civic Healthcare Initiative
+                </span>
+              </div>
               <h1 className="text-4xl sm:text-5xl font-extrabold leading-[1.05]">
                 Deoband<br /><span className="text-gold">Vishwas Card</span>
               </h1>

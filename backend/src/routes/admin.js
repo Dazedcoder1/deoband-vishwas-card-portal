@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { one, many, query, SCHEMES } from '../db.js';
+import { one, many, query, SCHEMES, SERVICES } from '../db.js';
 import { authenticate, requireRole } from '../lib/auth.js';
 import { upload } from '../middleware/upload.js';
 import { putObject, deleteObject, objectKey } from '../lib/storage.js';
@@ -23,7 +23,8 @@ router.get('/stats', async (req, res) => {
       (SELECT COUNT(*) FROM cards WHERE status = 'pending')                                   AS pending,
       (SELECT COUNT(*) FROM cards WHERE status = 'verified' AND issued_at >= date_trunc('day', now())) AS "issuedToday",
       (SELECT COUNT(*) FROM availments WHERE availed_on >= date_trunc('month', now()))        AS "availmentsThisMonth",
-      (SELECT COALESCE(SUM(amount), 0) FROM availments)                                       AS "subsidisedTotal"`);
+      (SELECT COALESCE(SUM(amount), 0) FROM availments)                                       AS "subsidisedTotal",
+      (SELECT COUNT(*) FROM service_requests WHERE status IN ('requested','in_progress'))     AS "openRequests"`);
   res.json(s);
 });
 
@@ -72,7 +73,8 @@ router.get('/cards/:cardId', async (req, res) => {
   const card = await findCard(req.params.cardId);
   if (!card) return res.status(404).json({ error: 'Card not found.' });
   const availments = await many('SELECT * FROM availments WHERE card_id = @id ORDER BY availed_on DESC', { id: card.card_id });
-  res.json({ card: await serializeCard(card), availments });
+  const requests = await many(`SELECT id, service, note, status, created_at AS "createdAt" FROM service_requests WHERE card_id = @id ORDER BY created_at DESC`, { id: card.card_id });
+  res.json({ card: await serializeCard(card), availments, requests });
 });
 
 // Create + issue a new card (multipart/form-data with optional "photo")
@@ -147,6 +149,41 @@ router.post('/cards/:cardId/sms', async (req, res) => {
     console.error(`[sms] e-card SMS failed: ${err.message}`);
     res.status(502).json({ error: `SMS could not be sent: ${err.message}` });
   }
+});
+
+// ---------- Service requests (citizens clicking "Avail this Service") ----------
+router.get('/requests', async (req, res) => {
+  const where = [];
+  const p = {};
+  if (req.query.status === 'open') where.push("r.status IN ('requested','in_progress')");
+  else if (req.query.status) { where.push('r.status = @status'); p.status = req.query.status; }
+  if (req.query.service) { where.push('r.service = @service'); p.service = req.query.service; }
+  if (req.query.ward) { where.push('c.ward = @ward'); p.ward = req.query.ward; }
+  if (req.query.search) { where.push('(c.full_name ILIKE @s OR c.card_id ILIKE @s OR c.mobile LIKE @s)'); p.s = `%${req.query.search}%`; }
+  const sql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const items = await many(`
+    SELECT r.id, r.card_id AS "cardId", r.service, r.note, r.status, r.admin_note AS "adminNote",
+           r.created_at AS "createdAt", r.updated_at AS "updatedAt",
+           c.full_name AS "fullName", c.mobile, c.ward, c.family_members AS "familyMembers", a.name AS "handledBy"
+    FROM service_requests r
+    JOIN cards c ON c.card_id = r.card_id
+    LEFT JOIN admins a ON a.id = r.handled_by
+    ${sql}
+    ORDER BY (r.status IN ('requested','in_progress')) DESC, r.created_at DESC
+    LIMIT 300`, p);
+  const counts = await many('SELECT status, COUNT(*) AS n FROM service_requests GROUP BY status');
+  res.json({ items, services: SERVICES, counts: Object.fromEntries(counts.map((c) => [c.status, c.n])) });
+});
+
+router.patch('/requests/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const status = req.body.status;
+  if (!['requested', 'in_progress', 'completed', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status.' });
+  const row = await one(`UPDATE service_requests SET status = @status, admin_note = COALESCE(@note, admin_note), handled_by = @by, updated_at = now()
+                         WHERE id = @id RETURNING id, status`,
+    { id, status, note: req.body.adminNote ? String(req.body.adminNote).slice(0, 500) : null, by: req.user.adminId });
+  if (!row) return res.status(404).json({ error: 'Request not found.' });
+  res.json({ ok: true, ...row });
 });
 
 // ---------- Scheme availments ----------

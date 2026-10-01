@@ -10,9 +10,7 @@ export default function SiteFooter() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-10 border-b border-purple-800/60">
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center gap-3">
-              <span className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center border border-gold/60">
-                <LogoMark className="w-7 h-7" bg="#30165C" />
-              </span>
+              <LogoMark className="w-14 h-14" />
               <span className="leading-tight">
                 <span className="block text-[10px] uppercase tracking-widest text-slate-300 font-bold">Deoband</span>
                 <span className="block text-lg font-extrabold">VISHWAS CARD</span>

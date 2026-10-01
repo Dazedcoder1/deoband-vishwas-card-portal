@@ -17,6 +17,7 @@ Citizen healthcare & welfare card portal for the Deoband Assembly constituency �
   - *Make New ID* — register a beneficiary, upload photo (→ R2), auto card ID `DBD-1001-2026`, live preview, **Print PVC card**, **SMS e-card link**, **Download PDF**.
   - *Existing DB* — search/filter/paginate, review & approve online applications, edit, suspend, replace photo, **Export CSV**.
   - *Search & Availment* — record and audit scheme benefits (ambulance, IPD bills, medicines, camps…).
+- **Avail this Service** — every service on the citizen dashboard has a button; the request (with an optional note) is saved against the card. Admins see *who asked for which service* in **Service Requests**, mark it In progress / Completed / Not approved with a note, and the citizen sees the status on their dashboard.
 - **Online application** (`/apply`) — citizens apply themselves; arrives as *Pending KYC* for the admin desk.
 - **Public verification** (`/verify/:cardId`) — what the QR code on the card opens; shows masked details only.
 - **PDF card** — 2-page CR80 (85.6 × 54 mm, standard PVC size): front artwork with ID + QR, back with photo & details.
@@ -118,11 +119,20 @@ Photos are stored as `uploads/photos/<CARD-ID>-<timestamp>.jpg` (change the fold
 
 Until real keys are in place, keep `STORAGE_DRIVER=local` — photos go to `backend/uploads/` so everything still works.
 
+## QR codes (scan to verify)
+
+The QR on every card opens `/verify/<CARD-ID>`. The address inside it comes from:
+
+1. `PUBLIC_APP_URL` in `.env` — set this to your real domain once deployed (e.g. `https://deobandvishwas.org`).
+2. If empty (development), your PC's Wi-Fi address, e.g. `http://192.168.1.7:5173`. The backend prints it at start-up:
+   `[api] QR codes & SMS links point to http://192.168.1.7:5173`. Any phone **on the same Wi-Fi** can scan and verify.
+   The first time, Windows may ask to allow Node.js through the firewall — click **Allow** (Private networks).
+
 ## Going to production
 
 1. `NODE_ENV=production`, a long random `JWT_SECRET`, a strong `ADMIN_PASSWORD`.
 2. MSG91 keys in `.env` (`OTP_MODE=widget` + widget ID/token + authkey), and `OTP_DEV_MODE=false`.
-3. `CLIENT_URL=https://your-domain` (used for CORS and the QR/SMS verify links).
+3. `CLIENT_URL=https://your-domain` (CORS) and `PUBLIC_APP_URL=https://your-domain` (QR codes + SMS links).
 4. `npm run build` then `npm start` — the backend also serves `frontend/dist`, so one Node process runs the whole site.
    Or host the frontend separately (Cloudflare Pages / Vercel) and set `VITE_API_URL=https://api.your-domain/api` at build time.
 5. Data lives in Neon — use Neon branches for staging and its point-in-time restore for backups.
@@ -152,6 +162,8 @@ Until real keys are in place, keep `STORAGE_DRIVER=local` — photos go to `back
 | `GET` | `/api/admin/cards/:cardId/pdf`, `/api/admin/cards/export.csv` | admin |
 | `POST` | `/api/admin/cards/:cardId/sms` | admin |
 | `GET/POST` | `/api/admin/availments` | admin |
+| `GET/POST` | `/api/me/requests` | citizen — Avail this Service |
+| `GET` · `PATCH` | `/api/admin/requests` · `/api/admin/requests/:id` | admin — service requests |
 | `GET` | `/api/public/verify/:cardId`, `/api/public/stats`, `/api/public/meta` | public |
 | `POST` | `/api/public/apply`, `/api/public/find-card` | public |
 | `GET` | `/api/health` | health check (database + storage status) |

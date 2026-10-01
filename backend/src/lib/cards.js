@@ -1,6 +1,7 @@
 import { one } from '../db.js';
 import { config } from '../config.js';
 import { getViewUrl } from './storage.js';
+import { publicAppUrl } from './publicUrl.js';
 
 export const normalizeMobile = (m) => String(m || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '').replace(/^0(?=\d{10}$)/, '');
 export const isValidMobile = (m) => /^[6-9]\d{9}$/.test(m);
@@ -30,7 +31,7 @@ export function validUntilFrom(date = new Date()) {
 const HONORIFICS = /^(smt|shri|shrimati|sri|mr|mrs|ms|miss|dr|km|kumari|md|mohd)\.?$/i;
 export const firstName = (n) => String(n || '').split(/\s+/).filter((w) => w && !HONORIFICS.test(w))[0] || String(n || '').trim();
 
-export const verifyUrl = (cardId) => `${config.clientUrl}/verify/${encodeURIComponent(cardId)}`;
+export const verifyUrl = (cardId) => `${publicAppUrl}/verify/${encodeURIComponent(cardId)}`;
 
 export const maskMobile = (m) => (m ? `${m.slice(0, 2)}XXXXXX${m.slice(-2)}` : '');
 export const maskName = (n) =>

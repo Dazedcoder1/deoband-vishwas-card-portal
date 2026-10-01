@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PortalHeader from '../components/PortalHeader.jsx';
 import VishwasCard from '../components/VishwasCard.jsx';
-import { Alert, Icon, Modal, Spinner, StatusChip, Toast, formatDate, formatMobile, rupees } from '../components/ui.jsx';
+import { Alert, Icon, Modal, RequestStatus, Spinner, StatusChip, Toast, formatDate, formatMobile, rupees } from '../components/ui.jsx';
 import { api, HELPLINE } from '../lib/api.js';
 import { SCHEME_ICONS } from '../lib/content.js';
 
 const TABS = [
   { key: 'new', icon: 'badge', label: 'Make New ID', short: 'New ID' },
   { key: 'db', icon: 'database', label: 'Existing DB', short: 'DB' },
+  { key: 'requests', icon: 'assignment', label: 'Service Requests', short: 'Requests' },
   { key: 'availment', icon: 'policy', label: 'Search & Availment', short: 'Availment' },
 ];
 
@@ -45,6 +46,7 @@ export default function AdminDashboard() {
                   className={`flex-1 flex items-center justify-center lg:justify-start gap-1.5 sm:gap-2.5 rounded-xl px-2 sm:px-3 py-3 text-sm font-semibold transition ${tab === t.key ? 'bg-primary text-white shadow-floating' : 'text-ink-body hover:bg-lavender-soft'}`}>
                   <Icon name={t.icon} className={tab === t.key ? 'text-gold-light' : 'text-primary'} />
                   <span className="hidden sm:inline">{t.label}</span><span className="sm:hidden text-xs">{t.short}</span>
+                  {t.key === 'requests' && stats?.openRequests > 0 && <span className={`lg:ml-auto chip ${tab === t.key ? 'bg-gold text-primary-ink' : 'bg-gold/20 text-gold-ink'}`}>{stats.openRequests}</span>}
                   {t.key === 'db' && stats && <span className={`lg:ml-auto chip ${tab === t.key ? 'bg-white/15 text-white' : 'bg-lavender text-primary-deep'}`}>{stats.totalCards.toLocaleString('en-IN')}</span>}
                 </button>
               ))}
@@ -55,6 +57,7 @@ export default function AdminDashboard() {
                 <Stat label="Total Vishwas Cards" value={stats?.totalCards} icon="credit_card" />
                 <Stat label="Issued Today (Verified)" value={stats?.issuedToday} icon="verified" accent="text-emerald-600" />
                 <Stat label="Pending KYC" value={stats?.pending} icon="pending_actions" accent="text-amber-600" />
+                <Stat label="Open Service Requests" value={stats?.openRequests} icon="assignment" accent="text-primary" />
                 <Stat label="Total Subsidised" value={stats ? rupees(stats.subsidisedTotal) : null} icon="currency_rupee" />
               </div>
             </div>
@@ -71,6 +74,7 @@ export default function AdminDashboard() {
           <section className="min-w-0">
             {tab === 'new' && <NewIdTab meta={meta} notify={notify} onIssued={loadStats} />}
             {tab === 'db' && <DatabaseTab meta={meta} notify={notify} onChanged={loadStats} />}
+            {tab === 'requests' && <RequestsTab meta={meta} notify={notify} onChanged={loadStats} />}
             {tab === 'availment' && <AvailmentTab meta={meta} notify={notify} onChanged={loadStats} />}
           </section>
         </div>
@@ -448,6 +452,14 @@ function RecordModal({ cardId, onClose, meta, notify, onChanged }) {
           <div className="space-y-4">
             <div className="rounded-xl overflow-hidden border-2 border-gold/60"><VishwasCard cardId={card.cardId} verifyUrl={card.verifyUrl} placeholder={card.status !== 'verified'} /></div>
             <CardActions card={card} notify={notify} />
+            {data.requests?.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-2">Service requests ({data.requests.length})</p>
+                <ul className="text-sm divide-y divide-lavender">
+                  {data.requests.map((r) => <li key={r.id} className="py-2 flex justify-between items-center gap-3"><span>{r.service}<span className="block text-xs text-ink-muted">{formatDate(r.createdAt)}</span></span><RequestStatus status={r.status} /></li>)}
+                </ul>
+              </div>
+            )}
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-ink-muted mb-2">Benefits availed ({data.availments.length})</p>
               {data.availments.length === 0 ? <p className="text-sm text-ink-muted">None recorded yet.</p> : (
@@ -469,6 +481,102 @@ function RecordModal({ cardId, onClose, meta, notify, onChanged }) {
         </form>
       )}
     </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Tab: Service Requests (citizens clicking "Avail this Service")       */
+/* ------------------------------------------------------------------ */
+const REQUEST_FILTERS = [['open', 'Open (new + in progress)'], ['', 'All'], ['requested', 'New'], ['in_progress', 'In progress'], ['completed', 'Completed'], ['rejected', 'Not approved']];
+
+function RequestsTab({ meta, notify, onChanged }) {
+  const [filters, setFilters] = useState({ status: 'open', service: '', ward: '', search: '' });
+  const [debounced, setDebounced] = useState(filters);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState(null);
+  const [notes, setNotes] = useState({});
+
+  useEffect(() => { const t = setTimeout(() => setDebounced(filters), 300); return () => clearTimeout(t); }, [filters]);
+  const load = useCallback(() => {
+    const qs = new URLSearchParams(Object.entries(debounced).filter(([, v]) => v)).toString();
+    api.get(`/admin/requests${qs ? `?${qs}` : ''}`).then((d) => { setData(d); setError(''); }).catch((e) => setError(e.message));
+  }, [debounced]);
+  useEffect(() => { load(); }, [load]);
+  const setF = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+
+  async function update(r, status) {
+    setBusyId(r.id);
+    try {
+      await api.patch(`/admin/requests/${r.id}`, { status, adminNote: notes[r.id] || undefined });
+      notify(`${r.fullName} — ${r.service}: marked ${status.replace('_', ' ')}.`);
+      setNotes((n) => ({ ...n, [r.id]: '' }));
+      load(); onChanged();
+    } catch (e) { notify(e.message, 'error'); } finally { setBusyId(null); }
+  }
+
+  const c = data?.counts || {};
+  return (
+    <div className="space-y-6">
+      <div className="panel p-5 sm:p-6">
+        <span className="chip-lav"><Icon name="assignment" className="text-sm" /> Citizen Requests</span>
+        <h2 className="mt-2 text-xl sm:text-2xl font-extrabold text-primary-deep">Service Requests <span className="font-deva font-semibold text-ink-muted text-lg">/ सेवा अनुरोध</span></h2>
+        <p className="text-sm text-ink-muted">Every time a beneficiary clicks <b>Avail this Service</b> on their dashboard it appears here — who asked, for which service, and its status.</p>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          <span className="chip-pending">New: {c.requested || 0}</span>
+          <span className="chip-lav">In progress: {c.in_progress || 0}</span>
+          <span className="chip-verified">Completed: {c.completed || 0}</span>
+          <span className="chip-suspended">Not approved: {c.rejected || 0}</span>
+        </div>
+        <div className="mt-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <input className="input lg:col-span-4" placeholder="Search name, card ID or mobile" value={filters.search} onChange={(e) => setF('search', e.target.value)} />
+          <select className="input" value={filters.status} onChange={(e) => setF('status', e.target.value)} aria-label="Status">
+            {REQUEST_FILTERS.map(([v, l]) => <option key={l} value={v}>{l}</option>)}
+          </select>
+          <select className="input" value={filters.service} onChange={(e) => setF('service', e.target.value)} aria-label="Service">
+            <option value="">All services</option>{(data?.services || []).map((x) => <option key={x}>{x}</option>)}
+          </select>
+          <select className="input lg:col-span-2" value={filters.ward} onChange={(e) => setF('ward', e.target.value)} aria-label="Ward">
+            <option value="">All wards &amp; villages</option>{meta.wards.map((w) => <option key={w}>{w}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="panel">
+        {error && <div className="p-5"><Alert>{error}</Alert></div>}
+        {data && data.items.length === 0 && <p className="px-6 py-14 text-center text-ink-muted">No service requests match these filters.</p>}
+        <ul className="divide-y divide-[#F0EBF7]">
+          {data?.items.map((r) => {
+            const done = r.status === 'completed' || r.status === 'rejected';
+            return (
+              <li key={r.id} className="px-5 sm:px-6 py-4 grid lg:grid-cols-[1fr_auto] gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-extrabold text-primary-deep">{r.service}</p>
+                    <RequestStatus status={r.status} />
+                  </div>
+                  <p className="text-sm mt-1"><b>{r.fullName}</b> · <span className="text-primary-deep font-semibold">{r.cardId}</span> · <a href={`tel:+91${r.mobile}`} className="hover:underline">{formatMobile(r.mobile)}</a></p>
+                  <p className="text-xs text-ink-muted">{r.ward} • Family: {r.familyMembers} • Requested {formatDate(r.createdAt)}{r.handledBy ? ` • Handled by ${r.handledBy}` : ''}</p>
+                  {r.note && <p className="mt-2 text-sm bg-lavender-soft border border-lavender rounded-lg px-3 py-2">“{r.note}”</p>}
+                  {r.adminNote && <p className="mt-1 text-xs text-primary-deep"><b>Desk note:</b> {r.adminNote}</p>}
+                </div>
+                <div className="flex flex-col gap-2 lg:w-64">
+                  {!done && (
+                    <input className="input py-2 text-sm" placeholder="Note for citizen (optional)" value={notes[r.id] || ''} onChange={(e) => setNotes((n) => ({ ...n, [r.id]: e.target.value }))} />
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {r.status === 'requested' && <button type="button" disabled={busyId === r.id} onClick={() => update(r, 'in_progress')} className="btn-outline rounded-lg py-1.5 px-3 text-xs flex-1">In progress</button>}
+                    {!done && <button type="button" disabled={busyId === r.id} onClick={() => update(r, 'completed')} className="btn bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg py-1.5 px-3 text-xs flex-1">Completed</button>}
+                    {!done && <button type="button" disabled={busyId === r.id} onClick={() => update(r, 'rejected')} className="btn text-red-700 border border-red-200 hover:bg-red-50 rounded-lg py-1.5 px-3 text-xs flex-1">Not approved</button>}
+                    {done && <button type="button" disabled={busyId === r.id} onClick={() => update(r, 'requested')} className="btn-ghost border border-lavender-line rounded-lg py-1.5 px-3 text-xs">Reopen</button>}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
   );
 }
 
